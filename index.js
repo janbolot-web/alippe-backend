@@ -14,6 +14,7 @@ app.use(express.json());
 
 app.use("/api", router);
 
+
 const start = async () => {
   try {
     await mongoose.set("strictQuery", false);
@@ -27,5 +28,7 @@ const start = async () => {
     console.log(e);
   }
 };
+
+
 
 start();

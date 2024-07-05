@@ -1,4 +1,5 @@
 export default class UserDto {
+  phone;
   email;
   id;
   name;
@@ -9,6 +10,7 @@ export default class UserDto {
   avatarUrl;
   phoneNumber;
   constructor(model) {
+    this.phone = model.phone;
     this.email = model.email;
     this.phoneNumber = model.phoneNumber;
     this.id = model._id;

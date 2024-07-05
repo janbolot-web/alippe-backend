@@ -7,49 +7,52 @@ import roleModel from "../models/role-model.js";
 import UserDtoMob from "../dtos/userMob.dto.js";
 import axios from "axios";
 import OpenAI from "openai";
-
+import dotenv from "dotenv";
+import pdfkit from "pdfkit";
+import fs from "fs";
+import { log } from "console";
 // Метод для начала процесса верификации
 let verificationCodes = {};
+dotenv.config();
 
-// export const startVerification = async (req, res) => {
-//   try {
-//     // Извлекаем номер телефона из запроса
-//     const { phoneNumber } = req.body;
-//     // Инициализация Twilio клиента с использованием учетных данных из переменных окружения
-//     const accountSid = process.env.TWILIO_ACCOUNT_SID;
-//     const authToken = process.env.TWILIO_AUTH_TOKEN;
-//     const twilioClient = twilio(accountSid, authToken);
+export const startVerification = async (req, res) => {
+  try {
+    // Извлекаем номер телефона из запроса
+    const { phoneNumber } = req.body;
+    // Инициализация Twilio клиента с использованием учетных данных из переменных окружения
+    const accountSid = process.env.TWILIO_ACCOUNT_SID;
+    const authToken = process.env.TWILIO_AUTH_TOKEN;
+    const twilioClient = twilio(accountSid, authToken);
 
-//     // Генерация и сохранение случайного кода верификации для номера телефона
-//     const generateVerificationCode = () => {
-//       return Math.floor(100000 + Math.random() * 900000);
-//     };
-//     const verificationCode = generateVerificationCode();
-//     verificationCodes.phoneNumber = verificationCode;
+    // Генерация и сохранение случайного кода верификации для номера телефона
+    const generateVerificationCode = () => {
+      return Math.floor(100000 + Math.random() * 900000);
+    };
+    const verificationCode = generateVerificationCode();
+    verificationCodes.phoneNumber = verificationCode;
 
-//     // Отправка SMS с сгенерированным кодом верификации
-//     await twilioClient.messages.create({
-//       body: `Ваш проверочный код: ${verificationCode}`,
-//       from: "whatsapp:" + process.env.TWILIO_WHATSAPP_NUMBER,
-//       to: "whatsapp:" + phoneNumber,
-//     });
-//     // Ответ об успешной отправке кодаt
-//     res.json({
-//       success: true,
-//       message: "Verification code sent successfully",
-//     });
-//   } catch (error) {
-//     // Обработка ошибок при отправке SMS
-//     console.error("Error sending SMS:", error);
-//     res.status(500).json({ success: false, message: "Error sending SMS" });
-//   }
-// };
+    // Отправка SMS с сгенерированным кодом верификации
+    await twilioClient.messages.create({
+      body: `Ваш проверочный код: ${verificationCode}`,
+      from: "whatsapp:" + process.env.TWILIO_WHATSAPP_NUMBER,
+      to: "whatsapp:" + phoneNumber,
+    });
+    // Ответ об успешной отправке кодаt
+    res.json({
+      success: true,
+      message: "Verification code sent successfully",
+    });
+  } catch (error) {
+    // Обработка ошибок при отправке SMS
+    console.error("Error sending SMS:", error);
+    res.status(500).json({ success: false, message: "Error sending SMS" });
+  }
+};
 
 // Метод для проверки введенного пользователем кода верификации
 export const verifyCode = async (req, res) => {
   try {
     // Извлекаем номер телефона и введенный код из запроса
-    console.log(req.body);
     const phoneNumber = req.body.phoneNumber;
     // Проверка, существует ли уже пользователь с этим номером телефона
     const existingUser = await userModel.findOne({ phoneNumber: phoneNumber });
@@ -60,13 +63,14 @@ export const verifyCode = async (req, res) => {
     if (existingUser) {
       // Пользователь уже зарегистрирован, отправьте сообщение об этом
       const UserData = new UserDto(existingUser);
-      // console.log("DTo", UserData);
+      console.log("DTo", UserData);
       return res.json({
         success: true,
         data: UserData,
         message: "Номер подтвержден!",
       });
     }
+
     const userRole = await roleModel.findOne({ value: "USER" });
 
     const newUser = new userModel({
@@ -92,7 +96,6 @@ export const verifyCode = async (req, res) => {
     );
     // Ответ об успешной верификации
     const userData = new UserDto(user);
-    console.log(userData);
     res.json({
       success: true,
       data: userData,
@@ -108,22 +111,37 @@ export const verifyCode = async (req, res) => {
 export const setUserData = async (req, res) => {
   try {
     const name = req.body.name;
-    console.log(req.body);
+    // console.log(req.body);
+    console.log(req.query.userId);
+
     const updateData = {
       $set: {
         name: name,
       },
     };
-
     const user = await userModel.findByIdAndUpdate(
       req.query.userId,
       updateData,
       { new: true }
     );
+    const token = jwt.sign(
+      {
+        _id: user._id,
+        roles: user.roles,
+      },
+      "secret1234",
+      { expiresIn: "30d" }
+    );
     const userData = new UserDto(user);
     console.log("DTO", userData);
     console.log("Документ успешно обновлен:", user);
-    res.json({ userData, message: "Вы успешно авторизовались!" });
+    res.json({
+      data: {
+        userData,
+        token,
+      },
+      message: "Вы успешно авторизовались!",
+    });
   } catch (error) {
     console.log(error);
   }
@@ -135,27 +153,28 @@ export const register = async (req, res) => {
     if (!errors.isEmpty()) {
       return res.status(400).json({ message: errors.array()[0].msg });
     }
-    const { email, password, name, avatarUrl } = req.body;
-    const candidate = await userModel.findOne({ email });
+    const { phone, password, name, avatarUrl } = req.body;
+    const candidate = await userModel.findOne({ phone });
     if (candidate) {
       return res
         .status(400)
-        .json({ message: `Пользователь ${email} уже существует` });
+        .json({ message: `Пользователь ${phone} уже существует` });
     }
     const salt = await bcrypt.genSalt(10);
     const hashPassword = await bcrypt.hash(password, salt);
-
     const userRole = await roleModel.findOne({ value: "USER" });
-
+    console.log();
     const doc = new userModel({
-      email,
+      phone,
       password: hashPassword,
       name,
       avatarUrl: "f",
+      email: Date.now().toString(),
       roles: [userRole.value],
     });
 
     const user = await doc.save();
+    console.log("!!!!!!!!!!!!", user);
 
     const token = jwt.sign(
       {
@@ -182,9 +201,9 @@ export const register = async (req, res) => {
 
 export const login = async (req, res) => {
   try {
-    const { email, password, name } = req.body;
+    const { phone, password, name } = req.body;
 
-    const user = await userModel.findOne({ email });
+    const user = await userModel.findOne({ phone });
     if (!user) {
       return res.status(404).json({ message: "Пользователь не найден" });
     }
@@ -220,13 +239,21 @@ export const login = async (req, res) => {
 
 export const getMe = async (req, res) => {
   try {
-    console.log(req.query.userId);
-    const user = await userModel.findById(req.userId).populate("courses");
+    const token = req.query.token;
+    if (!token) {
+      return res.status(400).json({ error: "Token is required" });
+    }
+    const decoded = jwt.verify(token, "secret1234");
+    const userId = decoded._id; // Предполагаем, что номер телефона хранится в поле "phone"
+    if (!userId) {
+      return res.status(400).json({ error: "Phone number not found in token" });
+    }
+    const user = await userModel.findById(userId).populate("courses");
     if (!user) {
       return res.status(404).json({ message: "Пользователь не найден" });
     }
     const UserData = new UserDto(user);
-
+    console.log(UserData);
     res.json(UserData);
   } catch (e) {
     console.log(e);
@@ -256,9 +283,10 @@ export const getMeMobile = async (req, res) => {
 
 export const getUsers = async (req, res) => {
   try {
-    const users = await userModel.find();
+    const users = await userModel.find().sort({ _id: -1 }).limit(30);
 
-    res.json(users.reverse());
+    console.log("users", users);
+    res.json(users);
   } catch (e) {
     console.log(e);
   }
@@ -353,7 +381,7 @@ export const searchUser = async (req, res) => {
       .find({
         $or: [
           { name: { $regex: req.params.key } },
-          { email: { $regex: req.params.key } },
+          { phoneNumber: { $regex: req.params.key } },
         ],
       })
       .populate("courses");
@@ -377,7 +405,7 @@ export const deleteUser = async (req, res) => {
 };
 
 export const fetchChatgpt = async (req, res) => {
-  console.log('ok')
+  console.log("ok");
   try {
     const data = req.body.response;
     // console.log("!!!!!!!!!data",data);
@@ -387,7 +415,7 @@ export const fetchChatgpt = async (req, res) => {
       messages: [
         {
           role: "user",
-          content:  data,
+          content: data,
         },
       ],
     };
@@ -395,7 +423,7 @@ export const fetchChatgpt = async (req, res) => {
     const config = {
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Bearer sk-proj-F5m9pCY1ctngvvDYxKwQT3BlbkFJ52tmVXsvZCzm3uaWql4I`,
+        Authorization: `Bearer ${process.env.OPEN_AI}`,
       },
     };
     const response = await axios
@@ -407,123 +435,40 @@ export const fetchChatgpt = async (req, res) => {
         console.error("Произошла ошибка:", error); // обработка ошибки
       });
     console.log(`response ${process.env.OPEN_AI}`);
-    res.json({ response: response.data.choices[0].message.content,statusCode:response.status });
+    res.json({
+      response: response.data.choices[0].message.content,
+      statusCode: response.status,
+    });
   } catch (error) {
     console.log(error);
     res.status(404).json({ message: "Не удалось удалить пользователья" });
   }
 };
-// async function deleteUser(userId) {
-//   try {
-//     const result = await userModel.deleteOne({ _id: userId });
+export const generatePdf = async (req, res) => {
+  try {
+    const doc = new pdfkit();
 
-//     if (result.deletedCount === 1) {
-//       console.log(`Пользователь с ID ${userId} успешно удален`);
-//     } else {
-//       console.log(`Пользователь с ID ${userId} не найден`);
-//     }
-//   } finally {
-//     await client.close();
-//   }
-// }
+    // Устанавливаем заголовок ответа для указания типа содержимого как PDF
+    res.setHeader("Content-Type", "application/pdf");
+    // Устанавливаем заголовок ответа для указания имени файла
+    res.setHeader(
+      "Content-Disposition",
+      'attachment; filename="user_data.pdf"'
+    );
 
-// const roleModel = require("../models/role-model.js");
-// const { validationResult } = require("express-validator");
-// const userModel = require("../models/user-model.js");
-// const bcrypt = require("bcrypt");
-// const jwt = require("jsonwebtoken");
-// const UserDto = require("../dtos/user.dto.js");
+    // Перенаправляем вывод PDF в ответ HTTP
+    doc.pipe(res);
+    doc.font("fonts/RobotoFlex-Regular.ttf");
 
-// const generateAccessToken = (id, roles) => {
-//   const payload = {
-//     id,
-//     roles,
-//   };
+    // Добавляем информацию о пользователе в PDF
+    doc.text(`Жанюолот`);
 
-//   return jwt.sign(payload, process.env.JWT_ACCESS_SECRET, { expiresIn: "24h" });
-// };
+    // Добавляем информацию о курсах пользователя в PDF
 
-// class UserController {
-//   async registration(req, res, next) {
-//     try {
-//       const errors = validationResult(req);
-//       if (!errors.isEmpty()) {
-//         return res
-//           .status(400)
-//           .json({ message: "Ошибка при регистрации", errors: errors.array() });
-//       }
-//       const { email, password, name } = req.body;
-//       const candidate = await userModel.findOne({ email });
-//       if (candidate) {
-//         return res
-//           .status(400)
-//           .json({ message: `Пользователь ${email} уже существует` });
-//       }
-//       const hashPassword = await bcrypt.hash(password, 3);
-//       const userRole = await roleModel.findOne({ value: "USER" });
-//       const user = new userModel({
-//         email,
-//         name,
-//         password: hashPassword,
-//         roles: [userRole.value],
-//       });
-//       const token = generateAccessToken(user._id, user.roles);
-//       const userData = new UserDto(user,token);
-//       await user.save();
-//       return res.status(201).json(userData);
-//     } catch (e) {
-//       console.log(e);
-//       res.status(400).json({ message: "Ошибка при регистрации" });
-//     }
-//   }
-//   async login(req, res, next) {
-//     try {
-//       const { email, password } = req.body;
-//       const user = await userModel.findOne({ email });
-
-//       if (!user) {
-//         return res
-//           .status(400)
-//           .json({ message: `Пользователь ${email} не найден` });
-//       }
-//       const validPassword = bcrypt.compareSync(password, user.password);
-//       if (!validPassword) {
-//         return res.status(400).json({ message: `Неверный пароль` });
-//       }
-//       const token = generateAccessToken(user._id, user.roles);
-//       return res.json({ token });
-//     } catch (e) {
-//       console.log(e);
-//       res.status(400).json({ message: "Login Error" });
-//     }
-//   }
-//   async logout(req, res, next) {
-//     try {
-//     } catch (e) {
-//       console.log(e);
-//     }
-//   }
-//   async activate(req, res, next) {
-//     try {
-//     } catch (e) {
-//       console.log(e);
-//     }
-//   }
-//   async refresh(req, res, next) {
-//     try {
-//     } catch (e) {
-//       console.log(e);
-//     }
-//   }
-//   async getUsers(req, res, next) {
-//     try {
-//       const users = await userModel.find();
-
-//       res.json(users);
-//     } catch (e) {
-//       console.log(e);
-//     }
-//   }
-// }
-
-// module.exports = new UserController();
+    // Завершаем документ и ответ
+    doc.end();
+  } catch (error) {
+    console.error("Error generating PDF:", error);
+    res.status(500).json({ success: false, message: "Error generating PDF" });
+  }
+};
