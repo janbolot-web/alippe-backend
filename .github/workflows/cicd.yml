@@ -4,7 +4,7 @@ name: Deploy to Azure App Service
 on:
   push: 
     branches: 
-      - app-service-deployment
+      - alippe-backend
 
 jobs: 
   build-and-deploy:
