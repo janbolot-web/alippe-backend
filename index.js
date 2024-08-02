@@ -9,7 +9,11 @@ const PORT = process.env.PORT || 5001;
 const app = express();
 
 dotenv.config();
-app.use(cors());
+
+app.use(cors({
+  origin: 'https://alippepro.ru' // Разрешить запросы с https://alippepro.ru
+}));
+
 app.use(express.json());
 
 app.use("/api", router);

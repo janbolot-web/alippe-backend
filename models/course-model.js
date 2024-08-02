@@ -10,7 +10,7 @@ const CourseSchema = new mongoose.Schema(
     previewVideoUrl: { type: String, required: true },
     authorName: { type: String, required: true },
     authorProfession: { type: String, required: true },
-    bgImage: { type: String,  },
+    bgImage: { type: String },
     authors: [{ type: mongoose.Schema.Types.ObjectId, ref: "Author" }],
     modules: [
       {
@@ -23,6 +23,7 @@ const CourseSchema = new mongoose.Schema(
             videoUrl: { type: String },
             description: { type: String },
             youtubeUrl: { type: String },
+            rumbleUrl: { type: String },
           },
         ],
       },

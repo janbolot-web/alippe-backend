@@ -9,6 +9,7 @@ export const CourseDto = (courses) => {
       previewImgUrl: course.previewImgUrl,
       createdAt: course.createdAt,
       bgImage: course.bgImage,
+      // rumbleUrl: course.rumbleUrl,
     };
     coursesData.push(courseData);
   });

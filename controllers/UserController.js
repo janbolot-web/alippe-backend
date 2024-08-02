@@ -395,7 +395,6 @@ export const searchUser = async (req, res) => {
 export const deleteUser = async (req, res) => {
   try {
     const { id } = req.params;
-    console.log(id);
     await userModel.findByIdAndDelete({ _id: id });
     res.json({ message: "Пользователь успешно удален" });
   } catch (error) {
